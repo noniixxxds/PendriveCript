@@ -1,0 +1,129 @@
+import tkinter as tk
+from tkinter import messagebox
+from cryptography.fernet import Fernet
+import os
+import time
+import threading  # Importação do módulo threading
+
+# O restante do código permanece o mesmo...
+
+
+# Função para verificar se o pendrive está conectado
+def verificar_pendrive():
+    drives = [d for d in os.listdir('C:/') if os.path.isdir(d) and 'PENDRIVE_LABEL' in d]
+    if drives:
+        return True
+    else:
+        return False
+
+# Função para atualizar o estado do pendrive na interface
+def atualizar_estado_pendrive():
+    while True:
+        if verificar_pendrive():
+            estado_label.config(text="Pendrive Conectado")
+        else:
+            estado_label.config(text="Pendrive Não Conectado")
+        time.sleep(2)  # Atualiza a cada 2 segundos
+
+# Verificar se a chave de criptografia já existe no pendrive, se não, criar uma nova
+def gerar_chave():
+    if verificar_pendrive():
+        if not os.path.exists('C:/PENDRIVE_LABEL/chave.key'):
+            chave = Fernet.generate_key()
+            with open('C:/PENDRIVE_LABEL/chave.key', 'wb') as chave_arquivo:
+                chave_arquivo.write(chave)
+            return True
+    return False
+
+# Carregar a chave de criptografia do pendrive
+def carregar_chave():
+    if verificar_pendrive():
+        with open('C:/PENDRIVE_LABEL/chave.key', 'rb') as chave_arquivo:
+            return chave_arquivo.read()
+    return None
+
+# Criptografar dados
+def criptografar_dados(dados, chave):
+    f = Fernet(chave)
+    return f.encrypt(dados.encode())
+
+# Descriptografar dados
+def descriptografar_dados(dados_criptografados, chave):
+    f = Fernet(chave)
+    return f.decrypt(dados_criptografados).decode()
+
+# Salvar dados criptografados em arquivo no pendrive
+def salvar_dados(site, usuario, senha):
+    if verificar_pendrive():
+        chave = carregar_chave()
+        dados = f"{site} - {usuario} - {senha}"
+        dados_criptografados = criptografar_dados(dados, chave)
+        with open('C:/PENDRIVE_LABEL/senhas.txt', 'ab') as arquivo:
+            arquivo.write(dados_criptografados + b'\n')
+        messagebox.showinfo("Sucesso", "Senha salva com sucesso!")
+    else:
+        messagebox.showerror("Erro", "Pendrive não encontrado.")
+
+# Ler e descriptografar dados do arquivo no pendrive
+def ler_dados():
+    if verificar_pendrive():
+        chave = carregar_chave()
+        dados_descriptografados = []
+        with open('C:/PENDRIVE_LABEL/senhas.txt', 'rb') as arquivo:
+            linhas = arquivo.readlines()
+            for linha in linhas:
+                dados_criptografados = linha.strip()
+                dados = descriptografar_dados(dados_criptografados, chave)
+                site, usuario, senha = dados.split(' - ')
+                dados_descriptografados.append((site, usuario, senha))
+        return dados_descriptografados
+    else:
+        messagebox.showerror("Erro", "Pendrive não encontrado.")
+        return []
+
+# Função para exibir as senhas salvas
+def exibir_senhas():
+    dados = ler_dados()
+    senha_descriptografada = "\n".join([f"Site: {site}\nUsuário: {usuario}\nSenha: {senha}" for site, usuario, senha in dados])
+    messagebox.showinfo("Senhas Salvas", senha_descriptografada)
+
+# Criar a janela principal
+root = tk.Tk()
+root.title("Gerenciador de Senhas")
+
+# Criar os elementos da interface
+estado_label = tk.Label(root, text="Verificando Pendrive...", font=("Arial", 12))
+estado_label.pack(pady=10)
+
+site_label = tk.Label(root, text="Site:")
+site_label.pack()
+
+site_entry = tk.Entry(root)
+site_entry.pack()
+
+usuario_label = tk.Label(root, text="Usuário:")
+usuario_label.pack()
+
+usuario_entry = tk.Entry(root)
+usuario_entry.pack()
+
+senha_label = tk.Label(root, text="Senha:")
+senha_label.pack()
+
+senha_entry = tk.Entry(root, show="*")
+senha_entry.pack()
+
+salvar_button = tk.Button(root, text="Salvar Senha", command=lambda: salvar_dados(site_entry.get(), usuario_entry.get(), senha_entry.get()))
+salvar_button.pack(pady=5)
+
+# Botão para exibir as senhas salvas
+exibir_senhas_button = tk.Button(root, text="Exibir Senhas", command=exibir_senhas)
+exibir_senhas_button.pack(pady=5)
+
+# Iniciar uma thread para verificar o estado do pendrive
+thread_estado_pendrive = threading.Thread(target=atualizar_estado_pendrive)
+thread_estado_pendrive.daemon = True
+thread_estado_pendrive.start()
+
+# Iniciar o loop de eventos
+root.mainloop()
